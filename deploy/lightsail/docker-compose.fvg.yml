@@ -1,0 +1,38 @@
+# fvg 生产部署（Lightsail 单机，无数据库：数据都在浏览器 IndexedDB 里）
+#
+# 与 uilines 的应用共用同一台机器与同一个 Caddy 容器，所以这里只起一个应用容器，
+# 并加入 uilines 的 compose 网络（deploy_default），让 Caddy 能用容器名 fvg 反代。
+#
+#   docker save fvg-app:amd64 | ssh ... 'docker load && docker tag fvg-app:amd64 fvg:latest'
+#   cd /srv/fvg && docker compose -f docker-compose.fvg.yml up -d
+services:
+  fvg:
+    image: fvg:latest
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    expose:
+      - "3000"
+    # 只在宿主机回环暴露，方便本机 curl 排查；对外流量走已有的 caddy
+    ports:
+      - "127.0.0.1:3001:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/trade/BTCUSDT').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - uilines
+
+networks:
+  uilines:
+    external: true
+    name: deploy_default

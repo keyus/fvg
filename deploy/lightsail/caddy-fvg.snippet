@@ -1,0 +1,20 @@
+# ---- fvg.uilines.com（追加在 uilines Caddyfile 末尾，不动原有站点）----
+# Caddy 会自动为该域名申请 / 续期 Let's Encrypt 证书（HTTP-01 校验，
+# 所以 DNS 必须先指向这台机器的静态 IP 47.131.37.185）
+fvg.uilines.com {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	reverse_proxy fvg:3000 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output file /data/fvg-access.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+}

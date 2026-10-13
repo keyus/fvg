@@ -174,3 +174,6 @@ const url2 = `https://pro-api.coinmarketcap.com/v1/cryptocurrency/info?symbol=${
 ```
 
 #### deploy aws
+
+部署到aws lightsail 现有实例 新加坡.
+域名. fvg.uilines.com
