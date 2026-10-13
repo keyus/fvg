@@ -1,0 +1,40 @@
+# 一次性初始化任务（建表 + 基础数据）：只在部署脚本里用 `--profile init run` 触发，
+# 平时 `up` 不会启动它。
+#
+#   docker compose --profile init \
+#     -f deploy/docker-compose.prod.yml -f deploy/docker-compose.localdb.yml \
+#     -f deploy/docker-compose.dbinit.yml run --rm dbinit
+#
+# 跑的容器自带 bun 与仓库代码（挂载 ..→/app），因此能跑 drizzle-kit push 与 seed。
+
+services:
+  dbinit:
+    image: oven/bun:1.4
+    profiles: ["init"]
+    working_dir: /app
+    volumes:
+      - ..:/app
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://${DB_USER:-uilines}:${DB_PASSWORD:?请在 shell 或 deploy.env 提供 DB_PASSWORD}@${DB_HOST:-mysql}:3306/${DB_NAME:-uilines}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-0}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@uilines.dev}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin12345}
+      # 由部署脚本决定：1 = 建表 + 写基础数据（空库首次部署）；
+      # 0 = 只同步表结构（库里已有数据，避免 seed 清理掉后台自建的商品/博客）
+      DBINIT_SEED: ${DBINIT_SEED:-0}
+    # 注意：脚本正文必须直接写在 command 里，不能 sh -c "$VAR"
+    # （变量展开不会重新解析 && 之类的 shell 运算符，会把它们当成命令参数）
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        bun install --frozen-lockfile
+        bun run db:push --force
+        if [ "${DBINIT_SEED:-0}" = "1" ]; then
+          echo "→ 写入基础数据（seed）"
+          bun run seed
+        else
+          echo "→ 跳过 seed（库里已有数据，避免清理后台自建内容）"
+        fi

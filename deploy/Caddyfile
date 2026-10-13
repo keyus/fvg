@@ -1,0 +1,38 @@
+# Caddy 反向代理：自动申请 / 续期 Let's Encrypt 证书，并把流量转到 app:3000
+# 域名由环境变量 ${APP_DOMAIN} 注入（见 deploy/docker-compose.prod.yml）
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# HSTS：告诉浏览器「这个域名以后只用 HTTPS 访问」，
+	# 避免出现 HTTP 页面被标记为“不安全”或明文访问的情况（注意：一旦下发无法回退，
+	# 所以只在自己完全确定长期用 HTTPS 的域名上启用）
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# www 子域 301 到主域：用 host 匹配写在同一个 site 块里，
+	# 这样只有 {$APP_DOMAIN} 一个证书名；若 DNS 里没有 www，也不会产生无效的证书申请。
+	@www host www.{$APP_DOMAIN}
+	redir @www https://{$APP_DOMAIN}{uri} permanent
+
+	# 健康检查不写访问日志，便于 CloudWatch / 抓包排查
+	@health path /api/health
+	reverse_proxy @health app:3000
+
+	reverse_proxy app:3000 {
+		# 让 Next.js / better-auth 看到真实协议与来源 IP（IP 归属地留痕依赖它）
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+}

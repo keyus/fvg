@@ -1,0 +1,68 @@
+# 生产部署（单机版）：应用容器 + Caddy 反向代理（自动 HTTPS）
+#
+# 用法（在仓库根目录）：
+#   cp .env.example .env      # 填生产变量（DATABASE_URL 指向 RDS / 外部 MySQL）
+#   echo "APP_DOMAIN=shop.example.com" >> .env
+#   docker compose -f deploy/docker-compose.prod.yml up -d --build
+#
+# 说明：
+# - 数据库不在本文件里（生产请用 RDS，或自备 MySQL 并只填 DATABASE_URL）
+# - 日志走 json-file，单机排查足够；需要集中日志可换 awslogs 驱动
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: uilines:latest
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    expose:
+      - "3000"
+    # 只在宿主机回环暴露，方便本地 curl 排查；正式流量走 caddy
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    # Caddyfile 里的 {$APP_DOMAIN} 从这份 env 读取
+    env_file:
+      - ../.env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # 挂载「目录」而不是「单个文件」：文件级 bind mount 会绑死 inode，
+      # 部署时用 scp/tar 覆盖同名文件会生成新 inode，容器仍然读旧内容（真实踩过）。
+      - ./:/etc/caddy-config:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    # 用挂载目录里的 Caddyfile 启动
+    command:
+      - caddy
+      - run
+      - --config
+      - /etc/caddy-config/Caddyfile
+      - --adapter
+      - caddyfile
+
+volumes:
+  caddy_data:
+  caddy_config:

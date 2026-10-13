@@ -172,3 +172,5 @@ fetch("https://pro-api.coinmarketcap.com/v3/cryptocurrency/quotes/latest", {
 //请求项目信息
 const url2 = `https://pro-api.coinmarketcap.com/v1/cryptocurrency/info?symbol=${symbol}`;
 ```
+
+#### deploy aws

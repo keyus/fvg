@@ -1,0 +1,47 @@
+# 覆盖文件：不用 RDS 时，在同机跑一个 MySQL 8.4 容器（省钱，适合演示/小流量）
+#
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.localdb.yml up -d --build
+#
+# 数据库只在 compose 内网可达（不映射到宿主机端口）；
+# 对应 .env 里 DATABASE_URL=mysql://<DB_USER>:<密码>@mysql:3306/uilines
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # 低配实例（512MB / 1GB）友好参数：关掉 binlog 与 performance_schema，
+      # 限制缓冲池与连接数，避免 MySQL 吃光内存把整机拖死
+      - --disable-log-bin
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=96M
+      - --innodb-redo-log-capacity=32M
+      - --max-connections=30
+      - --key-buffer-size=8M
+      - --table-open-cache=64
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 deploy.env 或 shell 中提供 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-uilines}
+      MYSQL_USER: ${DB_USER:-uilines}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?请在 deploy.env 或 shell 中提供 DB_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # 初始化任务要等库就绪再跑（用 RDS 时不加载本文件，所以依赖写在这里）
+  dbinit:
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysql_data:

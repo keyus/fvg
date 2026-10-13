@@ -1,0 +1,10 @@
+# 覆盖文件：没有域名时用「IP + HTTP」直接访问（省掉 Caddy）
+#
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.ip.yml up -d --build app
+#
+# 注意：仅适合先跑通；正式对外请配域名 + HTTPS（cookie 才会带 Secure）。
+
+services:
+  app:
+    ports:
+      - "80:3000"
